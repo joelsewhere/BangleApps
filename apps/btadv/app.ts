@@ -1,6 +1,6 @@
 {
 // @ts-expect-error helper
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 const __assign = Object.assign;
 
 const Layout = require("Layout");
@@ -687,6 +687,8 @@ const getBleAdvert = <T>(map: (s: BleServ) => T, all = false) => {
 const updateServices = () => {
   const newAdvert = getBleAdvert(serviceToAdvert);
 
+  // might get "Can't update services until BLE restart"
+  // but we're only called from setInterval, so fine to ignore
   NRF.updateServices(newAdvert);
 };
 
@@ -720,7 +722,7 @@ const hook = (enable: boolean) => {
 // --- intervals ---
 
 const setIntervals = (
-  locked: boolean = Bangle.isLocked(),
+  locked: ShortBoolean = Bangle.isLocked(),
   connected: boolean = NRF.getSecurityStatus().connected,
 ) => {
   changeInterval(
@@ -748,6 +750,7 @@ Bangle.on("lock", locked => setIntervals(locked));
 let bleInterval: undefined | IntervalId;
 NRF.on("connect", () => setIntervals(undefined, true));
 NRF.on("disconnect", () => setIntervals(undefined, false));
+NRF.wake();
 
 setIntervals();
 
@@ -767,32 +770,23 @@ enableSensors();
     },
   );
 
-  type BleAdvert = { [key: string]: number[] };
-  const bangle2 = Bangle as {
-    bleAdvert?: BleAdvert | BleAdvert[];
-  };
-  const cycle = Array.isArray(bangle2.bleAdvert) ? bangle2.bleAdvert : [];
-
   for(const id in ad){
     const serv = ad[id as BleServ];
     let value;
 
-    // pick the first characteristic to advertise
-    for(const ch in serv){
-      value = serv[ch as BleChar]!.value;
-      break;
+    // for HRM, some apps only pick it up if
+    // there's nothing in the advert
+    if (id === BleServ.HRM) {
+      value = undefined;
+    } else {
+      // pick the first characteristic to advertise
+      for(const ch in serv){
+        value = serv[ch as BleChar]!.value;
+        break;
+      }
     }
 
-    cycle.push({ [id]: value || [] });
+    require("ble_advert").set(id, value || []);
   }
-
-  bangle2.bleAdvert = cycle;
-
-  NRF.setAdvertising(
-    cycle,
-    {
-      interval: 100,
-    }
-  );
 }
 }

@@ -20,16 +20,17 @@ Graphics.prototype.setFontLECO1976Regular14 = function() {
 
 {
 const SETTINGS_FILE = "pebblepp.json";
-let settings = require("Storage").readJSON(SETTINGS_FILE,1)|| {'theme':'System', 'showlock':false};
+let settings = Object.assign({'theme':'System', 'showdate':true, 'clkinfoborder': true}, require("Storage").readJSON(SETTINGS_FILE,1)||{});
 let background = require("clockbg");
+background.load(); // reload if we fast loaded into here
 let theme;
 let drawTimeout;
 
 const h = g.getHeight();
 const w = g.getWidth();
 //const ha = 2*h/5 - 4;
-const h2 = 3*h/5 - 10;
-const h3 = 7*h/8;
+const h2 = Math.round(3*h/5) - 10;
+const h3 = Math.round(7*h/8);
 
 let draw = function() {
   let locale = require("locale");
@@ -37,7 +38,12 @@ let draw = function() {
   let time = locale.time(date, 1);
 
   g.reset();
-  g.setBgColor(theme.bg).clearRect(0, h2, w, h3);
+  g.setBgColor(theme.bg).clearRect(0, h2, w, h3); // clear area where clock is
+  if (settings.showdate) {
+    g.setColor(theme.fg).fillRect(w / 2 - 30, h3 + 5, w / 2 + 30, h); // refresh date background
+    g.setFontLECO1976Regular22().setFontAlign(0, -1);
+    g.setColor(theme.bg).drawString(date.getDate() + "." + (date.getMonth() + 1), w / 2, h3 + 5);
+  }
   g.setFontLECO1976Regular42().setFontAlign(0, -1);
   g.setColor(theme.fg);
   g.drawString(time, w/2, h2 + 8);
@@ -65,9 +71,6 @@ loadThemeColors();
 // Load the clock infos
 let clockInfoW = 0|(w/2);
 let clockInfoH = 0|(h/2);
-let clockInfoG = Graphics.createArrayBuffer(26, 26, 2, {msb:true});
-clockInfoG.transparent = 3;
-clockInfoG.palette = new Uint16Array([g.theme.bg, g.theme.fg, g.toColor("#888"), g.toColor("#888")]);
 let clockInfoItems = require("clock_info").load();
 let clockInfoDraw = (itm, info, options) => {
   // itm: the item containing name/hasRange/etc
@@ -86,7 +89,10 @@ let clockInfoDraw = (itm, info, options) => {
   if (info.img) { // draw the image
     // TODO: we could replace certain images with our own ones here...
     y = options.y+8;
-    require("clock_info").drawFilledImage(info.img,midx-24,y,{scale:2});
+    if (settings.clkinfoborder)
+      require("clock_info").drawBorderedImage(info.img,midx-24,y,{scale:2});
+    else
+      require("clock_info").drawFilledImage(info.img,midx-24,y,{scale:2});
   }
   g.setFontLECO1976Regular22().setFontAlign(0, 0);
   var txt = info.text.toString().toUpperCase();
@@ -94,9 +100,14 @@ let clockInfoDraw = (itm, info, options) => {
     g.setFontLECO1976Regular14();
   if (g.stringWidth(txt) > options.w) {// if still too big, split to 2 lines
     var l = g.wrapString(txt, options.w);
-    txt = l.slice(0,2).join("\n") + (l.length>2)?"...":"";
+    txt = l.slice(0,2).join("\n") + ((l.length>2)?"...":"");
   }
   y = options.y+options.h-12;
+  if (settings.clkinfoborder) {
+    g.setColor(theme.bg)
+    g.drawString(txt, midx-2, y).drawString(txt, midx+2, y).drawString(txt, midx, y-2).drawString(txt, midx, y+2);
+    g.setColor(theme.fg);
+  }
   g.drawString(txt, midx, y); // draw the text
 };
 
@@ -119,21 +130,21 @@ Bangle.setUI({
     // Called to unload all of the clock app
     if (drawTimeout) clearTimeout(drawTimeout);
     drawTimeout = undefined;
+    background.unload(); // free memory from background
     clockInfoMenuA.remove();
     clockInfoMenuB.remove();
     delete Graphics.prototype.setFontLECO1976Regular22;
     delete Graphics.prototype.setFontLECO1976Regular42;
     delete Graphics.prototype.setFontLECO1976Regular14;
+    g.reset().clearRect(0,0,g.getWidth(),24); // clear the rect where the widgets are
     require("widget_utils").show(); // re-show widgets
   }});
 
 Bangle.loadWidgets();
 require("widget_utils").swipeOn(); // hide widgets, make them visible with a swipe
 background.fillRect(Bangle.appRect); // start off with completely clear background
-// contrast bar (top)
-g.setColor(theme.fg).fillRect(0, h2 - 6, w, h2);
-// contrast bar (bottom)
-g.setColor(theme.fg).fillRect(0, h3, w, h3 + 6);
+// background contrast bar
+g.setColor(theme.fg).fillRect(0, h2 - 6, w, h3 + 6);
 
 draw();
 }
